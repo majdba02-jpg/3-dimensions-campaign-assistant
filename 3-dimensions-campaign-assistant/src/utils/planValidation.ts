@@ -1,0 +1,202 @@
+import { CampaignBrief, CampaignPlan, CalendarItem, RecommendedCadence, FactualStatus } from '../types';
+
+/**
+ * Validates and repairs calendar item dates, deadlines, platforms, and formats.
+ * Guarantees that EVERY post date is strictly >= brief.startDate AND <= brief.endDate.
+ */
+export function validateAndRepairCalendarItems(
+  rawCalendar: any[],
+  startDateStr: string,
+  endDateStr: string,
+  allowedPlatforms: string[] = [],
+  allowedFormats: string[] = []
+): CalendarItem[] {
+  if (!Array.isArray(rawCalendar) || rawCalendar.length === 0) {
+    return [];
+  }
+
+  // Normalize start and end dates
+  const start = new Date(startDateStr);
+  const end = new Date(endDateStr);
+
+  const validStart = isNaN(start.getTime()) ? new Date() : start;
+  let validEnd = isNaN(end.getTime()) ? new Date(validStart.getTime() + 13 * 86400000) : end;
+  if (validEnd < validStart) {
+    validEnd = new Date(validStart.getTime() + 86400000);
+  }
+
+  const startMs = validStart.getTime();
+  const endMs = validEnd.getTime();
+  const startIso = validStart.toISOString().slice(0, 10);
+  const endIso = validEnd.toISOString().slice(0, 10);
+
+  const totalItems = rawCalendar.length;
+  const daySpan = Math.max(0, Math.floor((endMs - startMs) / (1000 * 60 * 60 * 24)));
+
+  const validPlatformsList = allowedPlatforms.length > 0
+    ? allowedPlatforms
+    : ['Instagram', 'Facebook', 'LinkedIn', 'TikTok', 'WhatsApp', 'Website'];
+
+  const validFormatsList = allowedFormats.length > 0
+    ? allowedFormats
+    : ['Reel', 'Feed Photo', 'Carousel', 'Story', 'Video Short', 'Article/Post'];
+
+  return rawCalendar.map((item, idx) => {
+    let itemDateIso = (item.date || '').slice(0, 10);
+    const itemDate = new Date(itemDateIso);
+
+    // Strict boundary enforcement
+    const isInvalidOrOutOfRange =
+      !itemDateIso ||
+      isNaN(itemDate.getTime()) ||
+      itemDateIso < startIso ||
+      itemDateIso > endIso;
+
+    if (isInvalidOrOutOfRange) {
+      // Evenly distribute out-of-range items within the valid [startIso, endIso] campaign window
+      const stepFraction = totalItems > 1 ? idx / (totalItems - 1) : 0;
+      const targetOffsetDays = Math.round(stepFraction * daySpan);
+      const repairedDate = new Date(startMs + targetOffsetDays * 86400000);
+      itemDateIso = repairedDate.toISOString().slice(0, 10);
+    }
+
+    // Production deadline logic: Must be <= itemDateIso and >= startIso
+    let deadIso = (item.productionDeadline || '').slice(0, 10);
+    if (!deadIso || deadIso > itemDateIso || deadIso < startIso) {
+      const itemMs = new Date(itemDateIso).getTime();
+      const twoDaysPrior = new Date(Math.max(startMs, itemMs - 2 * 86400000));
+      deadIso = twoDaysPrior.toISOString().slice(0, 10);
+    }
+
+    // Validate platform & format
+    const platform = validPlatformsList.includes(item.platform)
+      ? item.platform
+      : validPlatformsList[0];
+
+    const format = validFormatsList.includes(item.format)
+      ? item.format
+      : validFormatsList[0];
+
+    const factualStatus: FactualStatus =
+      item.factualStatus === 'requires_confirmation' || item.factualStatus === 'creative'
+        ? item.factualStatus
+        : 'grounded';
+
+    return {
+      id: item.id || `cal_post_${idx + 1}_${Date.now()}`,
+      campaignId: item.campaignId || '',
+      date: itemDateIso,
+      platform,
+      format,
+      topic: item.topic || '3D Printing Campaign Post',
+      hook: item.hook || 'Discover innovation with 3 Dimensions',
+      caption: item.caption || '',
+      cta: item.cta || 'Contact us today',
+      status: item.status || 'Draft',
+      productionDeadline: deadIso,
+      concernedPeopleIds: Array.isArray(item.concernedPeopleIds) ? item.concernedPeopleIds : ['s1'],
+      reelScript: item.reelScript || '',
+      visualNotes: item.visualNotes || '',
+      hashtags: Array.isArray(item.hashtags) ? item.hashtags : [],
+      factualStatus,
+    };
+  });
+}
+
+/**
+ * Validates and normalizes the full Campaign Plan returned from Gemini.
+ */
+export function validateAndRepairCampaignPlan(
+  rawPlan: any,
+  brief: CampaignBrief
+): CampaignPlan {
+  if (!rawPlan || typeof rawPlan !== 'object') {
+    throw new Error('Invalid or empty campaign plan output received.');
+  }
+
+  // Validate or repair calendar items deterministically
+  const rawCalendar = Array.isArray(rawPlan.calendar) ? rawPlan.calendar : [];
+  const repairedCalendar = validateAndRepairCalendarItems(
+    rawCalendar,
+    brief.startDate,
+    brief.endDate,
+    brief.platforms,
+    brief.desiredFormats
+  );
+
+  if (repairedCalendar.length === 0) {
+    throw new Error('Campaign plan calendar contains no valid posts.');
+  }
+
+  // Ensure content pillars preserve brief specified pillars if any exist
+  let pillars: string[] = Array.isArray(rawPlan.contentPillars) ? rawPlan.contentPillars : [];
+  if (brief.contentPillars && brief.contentPillars.length > 0) {
+    // Preserve user specified pillars first
+    const combined = [...brief.contentPillars, ...pillars];
+    pillars = Array.from(new Set(combined)).slice(0, 5);
+  }
+
+  // Recommended Cadence computation / fallback
+  const rawCadence = rawPlan.recommendedCadence;
+  const reelsCount = repairedCalendar.filter((c) => c.format === 'Reel').length;
+  const carouselsCount = repairedCalendar.filter((c) => c.format === 'Carousel').length;
+  const feedCount = repairedCalendar.filter((c) => c.format === 'Feed Photo' || c.format === 'Article/Post').length;
+  const storiesCount = repairedCalendar.filter((c) => c.format === 'Story').length;
+
+  const recommendedCadence: RecommendedCadence = {
+    totalPrimaryPosts:
+      typeof rawCadence?.totalPrimaryPosts === 'number'
+        ? rawCadence.totalPrimaryPosts
+        : repairedCalendar.filter((c) => c.format !== 'Story').length,
+    reels: typeof rawCadence?.reels === 'number' ? rawCadence.reels : reelsCount,
+    carousels: typeof rawCadence?.carousels === 'number' ? rawCadence.carousels : carouselsCount,
+    feedPosts: typeof rawCadence?.feedPosts === 'number' ? rawCadence.feedPosts : feedCount,
+    stories: typeof rawCadence?.stories === 'number' ? rawCadence.stories : storiesCount,
+    rationale:
+      rawCadence?.rationale ||
+      `Cadence optimized for a ${brief.durationDays}-day ${brief.audienceSegment} campaign on ${brief.platforms.join(', ')}.`,
+  };
+
+  const planFactualStatus: FactualStatus =
+    rawPlan.factualStatus === 'requires_confirmation' || rawPlan.factualStatus === 'creative'
+      ? rawPlan.factualStatus
+      : 'grounded';
+
+  return {
+    id: brief.id,
+    campaignId: brief.id,
+    selectedDirection: rawPlan.selectedDirection || {
+      id: brief.selectedDirectionId || 'dir_1',
+      campaignId: brief.id,
+      title: 'Strategic Campaign Direction',
+      concept: rawPlan.concept || brief.name,
+      coreMessage: rawPlan.coreMessage || brief.objective,
+      strategicRationale: 'Tailored campaign direction for 3 Dimensions',
+      suggestedPillars: pillars,
+      highLevelDirection: 'Focus on quality, local responsiveness, and application benefits.',
+    },
+    concept: rawPlan.concept || brief.name,
+    coreMessage: rawPlan.coreMessage || brief.objective,
+    valueProposition: rawPlan.valueProposition || 'Empowering innovation through local 3D printing expertise.',
+    factualStatus: planFactualStatus,
+    contentPillars: pillars.length > 0 ? pillars : ['Product Showcase', 'Educational Value', 'Client Solutions'],
+    recommendedCadence,
+    recommendedFormats: Array.isArray(rawPlan.recommendedFormats) && rawPlan.recommendedFormats.length > 0
+      ? rawPlan.recommendedFormats
+      : brief.desiredFormats,
+    contentMixRationale: rawPlan.contentMixRationale || 'Balanced content mix combining educational, promotional, and story formats.',
+    productionEffortEstimate: rawPlan.productionEffortEstimate || 'Moderate (1-2 days of designer and video prep)',
+    visualDirection: rawPlan.visualDirection || 'Clean, professional SaaS aesthetic highlighting 3D print details and engineering precision.',
+    designerBrief: rawPlan.designerBrief || 'Focus on clean high-contrast product visuals with subtle 3 Dimensions brand colors (Deep Indigo/Purple).',
+    videographerBrief: rawPlan.videographerBrief || 'Capture smooth close-up footage of 3D printing in action (if available) and final printed pieces.',
+    shotList: Array.isArray(rawPlan.shotList) ? rawPlan.shotList : ['Close-up 3D print detail', '3D model preview on screen', 'Finished prototype presentation'],
+    hooksAndCTAs: Array.isArray(rawPlan.hooksAndCTAs) ? rawPlan.hooksAndCTAs : [],
+    hashtags: Array.isArray(rawPlan.hashtags) ? rawPlan.hashtags : ['#3DPrinting', '#TunisiaTech', '#3Dimensions'],
+    suggestedKPIs: Array.isArray(rawPlan.suggestedKPIs) ? rawPlan.suggestedKPIs : ['Engagement Rate', 'Inquiries / Leads', 'Reach'],
+    postPublicationRecommendations: rawPlan.postPublicationRecommendations || 'Monitor engagement during first 4 hours; respond promptly to inquiries.',
+    calendar: repairedCalendar,
+    components: rawPlan.components || {},
+    createdAt: new Date().toISOString(),
+    updatedAt: new Date().toISOString(),
+  };
+}

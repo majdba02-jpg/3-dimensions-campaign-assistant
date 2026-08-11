@@ -1,0 +1,6 @@
+{
+  "name": "3 Dimensions Campaign Assistant",
+  "description": "Private marketing workspace, analytics dashboard, and campaign assistant for 3 Dimensions (Tunisian 3D printing company)",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
