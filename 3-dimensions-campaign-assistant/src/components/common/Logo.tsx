@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 import logoDarkBg from '../../assets/logo_dark_bg.png';
 import logoLightBg from '../../assets/logo_light_bg.png';
 
@@ -17,17 +17,32 @@ export const Logo: React.FC<LogoProps> = ({
   compact = false,
 }) => {
   const isCompact = collapsed || compact;
-  const logoSrc = isDark ? logoDarkBg : logoLightBg;
+  const primarySrc = isDark ? logoDarkBg : logoLightBg;
+  const fallbackSrc = isDark ? '/logo_dark_bg.png' : '/logo_light_bg.png';
+  const [imgSrc, setImgSrc] = useState<string>(primarySrc);
+  const [errored, setErrored] = useState(false);
+
+  useEffect(() => {
+    setImgSrc(isDark ? logoDarkBg : logoLightBg);
+    setErrored(false);
+  }, [isDark]);
+
+  const handleError = () => {
+    if (!errored) {
+      setErrored(true);
+      setImgSrc(fallbackSrc);
+    }
+  };
 
   return (
-    <div className={`flex items-center justify-center select-none w-full ${className}`}>
+    <div className={`flex items-center justify-center select-none ${className}`}>
       <img
-        src={logoSrc}
-        alt="Infinite Dimensions Logo"
+        src={imgSrc}
+        alt="Infinite Dimensions"
+        onError={handleError}
         className={`object-contain transition-all duration-200 ${
-          isCompact ? 'max-h-10 w-auto' : 'max-h-16 w-full'
+          isCompact ? 'max-h-9 w-auto' : 'max-h-12 w-auto'
         }`}
-        style={{ objectFit: 'contain' }}
       />
     </div>
   );

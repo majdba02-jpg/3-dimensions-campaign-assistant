@@ -16,6 +16,7 @@ import {
   Send,
   Sparkles,
 } from 'lucide-react';
+import { StaffProfilePopover } from '../components/StaffProfilePopover';
 
 interface ContentReviewProps {
   assets: ContentAsset[];
@@ -34,11 +35,24 @@ export const ContentReview: React.FC<ContentReviewProps> = ({
   selectedAssetId,
   activeBrief,
 }) => {
+  const relevantAssets = activeBrief
+    ? assets.filter((a) => a.campaignId === activeBrief.id)
+    : assets;
+  const currentAssetList = relevantAssets.length > 0 ? relevantAssets : assets;
+
   const [currentAssetId, setCurrentAssetId] = useState<string>(
-    selectedAssetId || assets[0]?.id || ''
+    selectedAssetId || currentAssetList[0]?.id || ''
   );
 
-  const activeAsset = assets.find((a) => a.id === currentAssetId) || assets[0];
+  React.useEffect(() => {
+    if (selectedAssetId) {
+      setCurrentAssetId(selectedAssetId);
+    } else if (currentAssetList.length > 0 && !currentAssetList.some((a) => a.id === currentAssetId)) {
+      setCurrentAssetId(currentAssetList[0].id);
+    }
+  }, [selectedAssetId, activeBrief?.id, currentAssetList.length]);
+
+  const activeAsset = currentAssetList.find((a) => a.id === currentAssetId) || currentAssetList[0];
 
   // Editable Form State
   const [caption, setCaption] = useState(activeAsset?.caption || '');
@@ -157,11 +171,11 @@ export const ContentReview: React.FC<ContentReviewProps> = ({
         {/* Left Assets Selector Sidebar */}
         <div className="card-tier-1 p-4 space-y-3">
           <div className="text-xs font-bold uppercase tracking-wider text-slate-500">
-            Campaign Content Items ({assets.length})
+            Campaign Content Items ({currentAssetList.length})
           </div>
 
           <div className="space-y-2 max-h-[75vh] overflow-y-auto pr-1">
-            {assets.map((ast) => {
+            {currentAssetList.map((ast) => {
               const isSel = ast.id === activeAsset.id;
               return (
                 <button
@@ -379,15 +393,29 @@ export const ContentReview: React.FC<ContentReviewProps> = ({
 
             {/* Comment Stream */}
             <div className="space-y-2 pt-2 max-h-48 overflow-y-auto">
-              {(activeAsset.comments || []).map((c) => (
-                <div key={c.id} className="p-2.5 bg-[#F8FAFC] rounded-xl border border-slate-200/80 text-xs">
-                  <div className="flex items-center justify-between font-bold text-[#15192B]">
-                    <span>{c.authorName}</span>
-                    <span className="text-[10px] text-slate-400 font-medium">{c.authorRole}</span>
+              {(activeAsset.comments || []).map((c) => {
+                const matchedStaff = staffMembers.find(
+                  (s) => s.name.toLowerCase() === c.authorName.toLowerCase()
+                );
+
+                return (
+                  <div key={c.id} className="p-2.5 bg-[#F8FAFC] rounded-xl border border-slate-200/80 text-xs">
+                    <div className="flex items-center justify-between font-bold text-[#15192B]">
+                      {matchedStaff ? (
+                        <StaffProfilePopover staff={matchedStaff}>
+                          <span className="hover:text-[#172DC3] transition cursor-pointer underline decoration-dotted decoration-slate-300">
+                            {c.authorName}
+                          </span>
+                        </StaffProfilePopover>
+                      ) : (
+                        <span>{c.authorName}</span>
+                      )}
+                      <span className="text-[10px] text-slate-400 font-medium">{c.authorRole}</span>
+                    </div>
+                    <p className="text-xs text-slate-700 mt-1">{c.text}</p>
                   </div>
-                  <p className="text-xs text-slate-700 mt-1">{c.text}</p>
-                </div>
-              ))}
+                );
+              })}
             </div>
           </div>
         </div>

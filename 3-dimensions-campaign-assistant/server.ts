@@ -108,50 +108,456 @@ app.get('/api/health', (req, res) => {
 });
 
 /**
- * 1. Generate 3 Distinct Campaign Directions
+ * 1. Improve Campaign Objective with AI
  */
-app.post('/api/gemini/directions', async (req, res) => {
+app.post('/api/gemini/improve-objective', async (req, res) => {
   try {
-    const { brief, brandKit, feedbackMemory, campaignReferences } = req.body;
+    const { objective, campaignType, audienceSegment, productOrService, targetAudience, campaignTone, keyMessage } = req.body;
     const ai = getGeminiClient();
 
     const systemInstruction = `${FACTUAL_GROUNDING_RULES}
 
-You are a world-class Marketing Director and Brand Strategist for "3 Dimensions" (Infinite Dimensions), a premier 3D-printing and digital fabrication company in Tunis, Tunisia.
-Your job is to generate THREE (3) genuinely distinct, strategic campaign directions based on the user's campaign brief.
+You are an expert marketing strategist for "3 Dimensions" (Infinite Dimensions), a 3D-printing and fabrication studio in Tunis.
+Refine and improve the campaign objective provided by the marketer.
+Make it concise, actionable, and aligned with standard marketing outcomes (awareness, engagement, leads, inquiries, conversions).
 
-Key Strategic Requirements:
-1. Provide THREE distinct strategic angles (e.g., Angle 1: Educational / Expertise-Led & Process, Angle 2: Technical Proof & B2B/Quality Focus, Angle 3: Storytelling & Community/Promo Hook).
-2. Format must be strict valid JSON object containing an array "directions" with exactly 3 direction objects.
-3. Support the requested language: ${brief.language || 'English & Darija'}.
-4. If generating Tunisian Darija, write in Arabic script and retain natural English/French tech terms.
+STRICT RULES:
+- DO NOT invent unverified technical specifications, tolerances, pricing, delivery times, or guarantees.
+- Ground the suggestion in the provided product/service ("${productOrService || '3D Printing'}") and context.
+- Return a strict JSON object with "suggestedObjective" (1-2 sentences) and "rationale" (1 concise sentence explaining the refinement).`;
 
-Brand Kit Context:
-${brandKit ? JSON.stringify(brandKit) : 'No custom brand kit provided.'}
+    const prompt = `Current Campaign Context:
+- Current Draft Objective: "${objective || 'Promote 3D printing services'}"
+- Campaign Type: ${campaignType || 'General Campaign'}
+- Audience Segment: ${audienceSegment || 'Both'}
+- Product / Service: ${productOrService || '3D Printing Solutions'}
+- Target Audience: ${targetAudience || 'General Audience'}
+${campaignTone ? `- Desired Tone: ${Array.isArray(campaignTone) ? campaignTone.join(', ') : campaignTone}` : ''}
+${keyMessage ? `- Key Value Message: ${keyMessage}` : ''}
 
-Benchmark Campaign References:
-${campaignReferences && campaignReferences.length > 0 ? JSON.stringify(campaignReferences) : 'No references supplied.'}
+Propose an elevated, crisp marketing objective.`;
 
-Feedback Memory Context:
-${feedbackMemory && feedbackMemory.length > 0 ? JSON.stringify(feedbackMemory) : 'No prior feedback recorded.'}`;
+    const response = await callGeminiWithRetry(() =>
+      ai.models.generateContent({
+        model: GEMINI_CONFIG.model,
+        contents: prompt,
+        config: {
+          systemInstruction,
+          responseMimeType: 'application/json',
+          responseSchema: {
+            type: Type.OBJECT,
+            properties: {
+              suggestedObjective: { type: Type.STRING },
+              rationale: { type: Type.STRING },
+            },
+            required: ['suggestedObjective', 'rationale'],
+          },
+        },
+      })
+    );
 
-    const prompt = `Campaign Brief Details:
+    const parsed = JSON.parse(response.text || '{}');
+    res.json({ success: true, ...parsed });
+  } catch (error: any) {
+    console.error('Error improving objective:', error);
+    const is503 = error?.status === 503 || error?.message?.includes('503') || error?.message?.includes('UNAVAILABLE');
+    res.status(is503 ? 503 : 500).json({
+      success: false,
+      is503,
+      error: is503 ? 'Gemini is temporarily busy. Please try again.' : error.message || 'Failed to improve objective',
+    });
+  }
+});
+
+/**
+ * 1b. Polish / Improve Key Message with AI
+ */
+app.post('/api/gemini/improve-key-message', async (req, res) => {
+  try {
+    const { keyMessage, campaignType, audienceSegment, productOrService, targetAudience } = req.body;
+    const ai = getGeminiClient();
+
+    const systemInstruction = `${FACTUAL_GROUNDING_RULES}
+
+You are an expert copywriter for "3 Dimensions" in Tunis.
+Refine the marketer's key value proposition message to make it punchy, compelling, and clearly differentiated.
+STRICT RULES:
+- Never fabricate unverified tolerances, machine specs, or warranties.
+- Return a strict JSON object with "suggestedMessage" (1-2 sentences) and "rationale" (1 sentence).`;
+
+    const prompt = `Current Key Message: "${keyMessage || ''}"
+Campaign Type: ${campaignType || 'General'}
+Audience Segment: ${audienceSegment || 'Both'}
+Product / Service: ${productOrService || '3D Printing Solutions'}
+Target Audience: ${targetAudience || 'General Audience'}
+
+Refine the key value message while maintaining factual grounding.`;
+
+    const response = await callGeminiWithRetry(() =>
+      ai.models.generateContent({
+        model: GEMINI_CONFIG.model,
+        contents: prompt,
+        config: {
+          systemInstruction,
+          responseMimeType: 'application/json',
+          responseSchema: {
+            type: Type.OBJECT,
+            properties: {
+              suggestedMessage: { type: Type.STRING },
+              rationale: { type: Type.STRING },
+            },
+            required: ['suggestedMessage', 'rationale'],
+          },
+        },
+      })
+    );
+
+    const parsed = JSON.parse(response.text || '{}');
+    res.json({ success: true, ...parsed });
+  } catch (error: any) {
+    console.error('Error improving key message:', error);
+    const is503 = error?.status === 503 || error?.message?.includes('503') || error?.message?.includes('UNAVAILABLE');
+    res.status(is503 ? 503 : 500).json({
+      success: false,
+      is503,
+      error: is503 ? 'Gemini is temporarily busy. Please try again.' : error.message || 'Failed to improve key message',
+    });
+  }
+});
+
+/**
+ * 2. Recommend Content Formats
+ */
+app.post('/api/gemini/recommend-formats', async (req, res) => {
+  try {
+    const { objective, audience, productOrService, campaignType, platforms, languages, availableResources, references } = req.body;
+    const ai = getGeminiClient();
+
+    const systemInstruction = `${FACTUAL_GROUNDING_RULES}
+
+You are a creative director for "3 Dimensions". Based on the campaign context, platforms, and available resources, recommend the most effective mix of content formats from:
+["Reel", "Carousel", "Story", "Feed Photo", "Feed Post"].
+
+STRICT RULES:
+- Consider available resources (e.g. if video footage is available, prioritize Reels/Videos; if product photos only, prioritize Carousels and Feed Photos).
+- Return strict JSON object with "recommendedFormats" (array of strings from the allowed list) and "rationale" (1-2 sentences explaining why this mix is optimal).`;
+
+    const prompt = `Campaign Context:
+- Type: ${campaignType}
+- Product / Service: ${productOrService}
+- Objective: ${objective}
+- Audience: ${audience}
+- Platforms: ${Array.isArray(platforms) ? platforms.join(', ') : platforms}
+- Languages: ${Array.isArray(languages) ? languages.join(', ') : languages}
+- Available Resources: ${JSON.stringify(availableResources || {})}
+- References: ${JSON.stringify(references || [])}
+
+Recommend optimal content formats from: ["Reel", "Carousel", "Story", "Feed Photo", "Feed Post"].`;
+
+    const response = await callGeminiWithRetry(() =>
+      ai.models.generateContent({
+        model: GEMINI_CONFIG.model,
+        contents: prompt,
+        config: {
+          systemInstruction,
+          responseMimeType: 'application/json',
+          responseSchema: {
+            type: Type.OBJECT,
+            properties: {
+              recommendedFormats: {
+                type: Type.ARRAY,
+                items: { type: Type.STRING },
+              },
+              rationale: { type: Type.STRING },
+            },
+            required: ['recommendedFormats', 'rationale'],
+          },
+        },
+      })
+    );
+
+    const parsed = JSON.parse(response.text || '{"recommendedFormats":[],"rationale":""}');
+    res.json({ success: true, ...parsed });
+  } catch (error: any) {
+    console.error('Error recommending formats:', error);
+    const is503 = error?.status === 503 || error?.message?.includes('503') || error?.message?.includes('UNAVAILABLE');
+    res.status(is503 ? 503 : 500).json({
+      success: false,
+      is503,
+      error: is503 ? 'Gemini is temporarily busy. Please try again.' : error.message || 'Failed to recommend formats',
+    });
+  }
+});
+
+/**
+ * 3. Suggest Contextual CTAs
+ */
+app.post('/api/gemini/suggest-cta', async (req, res) => {
+  try {
+    const { objective, audience, productOrService, platforms, campaignType, funnelIntent, keyMessage } = req.body;
+    const ai = getGeminiClient();
+
+    const systemInstruction = `${FACTUAL_GROUNDING_RULES}
+
+You are a conversion strategist for "3 Dimensions" in Tunis.
+Suggest 3 distinct, punchy, high-converting Call-to-Action (CTA) phrases suitable for social media campaigns in Tunisia.
+Return strict JSON with "suggestedCTAs" array containing 3 items with { "cta": string, "rationale": string }.`;
+
+    const prompt = `Context:
+- Campaign Type: ${campaignType}
+- Product / Service: ${productOrService}
+- Objective: ${objective}
+- Audience: ${audience}
+- Funnel Intent: ${funnelIntent || 'Consideration'}
+- Platforms: ${Array.isArray(platforms) ? platforms.join(', ') : platforms}
+- Key Message: ${keyMessage || ''}
+
+Provide 3 distinct CTA suggestions.`;
+
+    const response = await callGeminiWithRetry(() =>
+      ai.models.generateContent({
+        model: GEMINI_CONFIG.model,
+        contents: prompt,
+        config: {
+          systemInstruction,
+          responseMimeType: 'application/json',
+          responseSchema: {
+            type: Type.OBJECT,
+            properties: {
+              suggestedCTAs: {
+                type: Type.ARRAY,
+                items: {
+                  type: Type.OBJECT,
+                  properties: {
+                    cta: { type: Type.STRING },
+                    rationale: { type: Type.STRING },
+                  },
+                  required: ['cta', 'rationale'],
+                },
+              },
+            },
+            required: ['suggestedCTAs'],
+          },
+        },
+      })
+    );
+
+    const parsed = JSON.parse(response.text || '{"suggestedCTAs":[]}');
+    res.json({ success: true, suggestedCTAs: parsed.suggestedCTAs || [] });
+  } catch (error: any) {
+    console.error('Error suggesting CTA:', error);
+    const is503 = error?.status === 503 || error?.message?.includes('503') || error?.message?.includes('UNAVAILABLE');
+    res.status(is503 ? 503 : 500).json({
+      success: false,
+      is503,
+      error: is503 ? 'Gemini is temporarily busy. Please try again.' : error.message || 'Failed to suggest CTA',
+    });
+  }
+});
+
+/**
+ * 4. Suggest Campaign Color Palette
+ */
+app.post('/api/gemini/suggest-palette', async (req, res) => {
+  try {
+    const { brandColors, campaignType, objective, audience, productOrService, tone, platforms } = req.body;
+    const ai = getGeminiClient();
+
+    const systemInstruction = `${FACTUAL_GROUNDING_RULES}
+
+You are an art director for "3 Dimensions" 3D Printing.
+The primary Brand Colors are: ${JSON.stringify(brandColors || ['#0F172A', '#2563EB', '#7C3AED'])}.
+Generate 3 to 4 complementary CAMPAIGN ACCENT COLORS (valid 6-character hex format like #3B82F6) specifically tailored to the campaign's visual mood, product type, and audience.
+Return a strict JSON object with a "palette" array of objects containing { "name": string, "hex": string, "rationale": string }.`;
+
+    const prompt = `Campaign Mood & Attributes:
+- Campaign Type: ${campaignType}
+- Product / Service: ${productOrService}
+- Objective: ${objective}
+- Audience: ${audience}
+- Desired Tone: ${Array.isArray(tone) ? tone.join(', ') : tone}
+- Target Platforms: ${Array.isArray(platforms) ? platforms.join(', ') : platforms}
+- Base Brand Colors: ${JSON.stringify(brandColors || [])}
+
+Generate 3-4 complementary campaign accent colors with hex codes.`;
+
+    const response = await callGeminiWithRetry(() =>
+      ai.models.generateContent({
+        model: GEMINI_CONFIG.model,
+        contents: prompt,
+        config: {
+          systemInstruction,
+          responseMimeType: 'application/json',
+          responseSchema: {
+            type: Type.OBJECT,
+            properties: {
+              palette: {
+                type: Type.ARRAY,
+                items: {
+                  type: Type.OBJECT,
+                  properties: {
+                    name: { type: Type.STRING },
+                    hex: { type: Type.STRING },
+                    rationale: { type: Type.STRING },
+                  },
+                  required: ['name', 'hex', 'rationale'],
+                },
+              },
+            },
+            required: ['palette'],
+          },
+        },
+      })
+    );
+
+    const parsed = JSON.parse(response.text || '{"palette":[]}');
+    const validHexRegex = /^#([A-Fa-f0-9]{6})$/;
+    const validPalette = (parsed.palette || []).filter((p: any) => validHexRegex.test(p.hex));
+    res.json({ success: true, palette: validPalette });
+  } catch (error: any) {
+    console.error('Error suggesting palette:', error);
+    const is503 = error?.status === 503 || error?.message?.includes('503') || error?.message?.includes('UNAVAILABLE');
+    res.status(is503 ? 503 : 500).json({
+      success: false,
+      is503,
+      error: is503 ? 'Gemini is temporarily busy. Please try again.' : error.message || 'Failed to suggest palette',
+    });
+  }
+});
+
+/**
+ * 5. Review Genuinely Missing Assumptions
+ */
+app.post('/api/gemini/assumptions', async (req, res) => {
+  try {
+    const { brief, brandKit, products, feedbackMemory } = req.body;
+    const ai = getGeminiClient();
+
+    const systemInstruction = `${FACTUAL_GROUNDING_RULES}
+
+You are an expert marketing reviewer for "3 Dimensions" in Tunis.
+Review the user's campaign brief to check if any GENUINELY CRITICAL creative framing or stylistic assumptions are needed before strategic directions are generated.
+
+STRICT ASSUMPTIONS CRITERIA:
+1. ONLY propose assumptions for genuinely missing optional fields that would significantly help shape creative direction.
+2. If the user has already provided sufficient information, return an EMPTY ARRAY "assumptions": [].
+3. You are STRICTLY FORBIDDEN from inventing technical capabilities, materials, tolerances, pricing, certifications, shipping guarantees, or turnaround times as assumptions!
+4. Allowed categories for assumptions: "Creative Framing", "Audience Sub-segment Angle", "Content Delivery Style", "Seasonal Angle".
+5. Return strict JSON with "assumptions" array containing objects with:
+   - id: string
+   - category: string
+   - proposedValue: string
+   - rationale: string
+   - sourceTags: string[] (e.g. ['Campaign Brief', 'Brand Kit', 'Feedback Memory'])`;
+
+    const prompt = `Review this Campaign Brief:
+${JSON.stringify(brief, null, 2)}
+
+Approved Brand Kit: ${JSON.stringify(brandKit || {})}
+Approved Products: ${JSON.stringify(products || [])}
+Feedback Memory: ${JSON.stringify(feedbackMemory || [])}
+
+Output only necessary assumptions, or an empty array if information is sufficient.`;
+
+    const response = await callGeminiWithRetry(() =>
+      ai.models.generateContent({
+        model: GEMINI_CONFIG.model,
+        contents: prompt,
+        config: {
+          systemInstruction,
+          responseMimeType: 'application/json',
+          responseSchema: {
+            type: Type.OBJECT,
+            properties: {
+              assumptions: {
+                type: Type.ARRAY,
+                items: {
+                  type: Type.OBJECT,
+                  properties: {
+                    id: { type: Type.STRING },
+                    category: { type: Type.STRING },
+                    proposedValue: { type: Type.STRING },
+                    rationale: { type: Type.STRING },
+                    sourceTags: {
+                      type: Type.ARRAY,
+                      items: { type: Type.STRING },
+                    },
+                  },
+                  required: ['category', 'proposedValue', 'rationale', 'sourceTags'],
+                },
+              },
+            },
+            required: ['assumptions'],
+          },
+        },
+      })
+    );
+
+    const parsed = JSON.parse(response.text || '{"assumptions":[]}');
+    const assumptions = (parsed.assumptions || []).map((a: any, idx: number) => ({
+      ...a,
+      id: a.id || `assump_${Date.now()}_${idx + 1}`,
+      status: 'Pending',
+    }));
+
+    res.json({ success: true, assumptions });
+  } catch (error: any) {
+    console.error('Error generating assumptions:', error);
+    const is503 = error?.status === 503 || error?.message?.includes('503') || error?.message?.includes('UNAVAILABLE');
+    res.status(is503 ? 503 : 500).json({
+      success: false,
+      is503,
+      error: is503 ? 'Gemini is temporarily busy. Please try again.' : error.message || 'Failed to review assumptions',
+    });
+  }
+});
+
+/**
+ * 6. Generate 3 Distinct Strategic Directions
+ */
+app.post('/api/gemini/directions', async (req, res) => {
+  try {
+    const { brief, brandKit, feedbackMemory, campaignReferences, assumptions } = req.body;
+    const ai = getGeminiClient();
+
+    const systemInstruction = `${FACTUAL_GROUNDING_RULES}
+
+You are the Executive Marketing Director for "3 Dimensions" (Infinite Dimensions) 3D Printing in Tunis.
+Generate EXACTLY THREE (3) distinct, high-impact strategic campaign directions based on the user's campaign brief.
+
+STRATEGIC MANDATES:
+1. Each direction must have a distinct STRATEGIC ANGLE (e.g. "Educational & Process Breakdown", "Technical Proof & Quality", "Problem-Solving & Community Inspiration", "Behind the Scenes Craftsmanship").
+2. Core message and concept must be tailored to the product/service, target audience, and Tunisia market context.
+3. PRESERVE USER-SELECTED PILLARS: Include the marketer's selected pillars (${JSON.stringify(brief.contentPillars || [])}) in "campaignPillars".
+4. You may optionally propose 1 unique "directionSpecificPillar" per direction if it enriches the strategic angle.
+5. If Darija or Arabic is requested, use authentic Arabic script with natural technical terms.
+6. Return strict JSON with a "directions" array containing exactly 3 direction objects.`;
+
+    const prompt = `Campaign Context:
 - Name: ${brief.name}
 - Objective: ${brief.objective}
 - Type: ${brief.type}
 - Audience Segment: ${brief.audienceSegment}
-- Product/Service: ${brief.productOrService}
-- Target Audience: ${brief.targetAudience} (${brief.audienceAge || 'N/A'})
+- Product / Service: ${brief.productOrService || JSON.stringify(brief.promotionItems || [])}
+- Target Audience: ${brief.targetAudience || JSON.stringify(brief.targetAudiences || [])} (${brief.audienceAge || `${brief.minAge || ''}-${brief.maxAge || ''}`})
 - Dates: ${brief.startDate} to ${brief.endDate} (${brief.durationDays} days)
-- Platforms: ${Array.isArray(brief.platforms) ? brief.platforms.join(', ') : brief.platforms}
-- Language: ${brief.language}
-- Content Formats: ${Array.isArray(brief.desiredFormats) ? brief.desiredFormats.join(', ') : brief.desiredFormats}
+- Platforms: ${Array.isArray(brief.targetPlatforms || brief.platforms) ? (brief.targetPlatforms || brief.platforms).join(', ') : brief.platforms}
+- Languages: ${Array.isArray(brief.languages) ? brief.languages.join(', ') : brief.language}
+- Desired Formats: ${Array.isArray(brief.desiredFormats) ? brief.desiredFormats.join(', ') : brief.desiredFormats}
 - CTA: ${brief.cta}
-${brief.contentPillars && brief.contentPillars.length > 0 ? `- Selected Content Pillars: ${brief.contentPillars.join(', ')}` : ''}
-${brief.usedAssumptions ? `- Active Assumptions: ${JSON.stringify(brief.usedAssumptions)}` : ''}
+- Target Locations: ${Array.isArray(brief.locations) ? brief.locations.join(', ') : 'Tunisia'}
+- Tone: ${Array.isArray(brief.campaignToneList) ? brief.campaignToneList.join(', ') : brief.campaignTone || 'Professional & Engaging'}
+- Key Message: ${brief.keyMessage || ''}
+- Funnel Intent: ${brief.funnelIntent || 'Consideration'}
+- Available Resources: ${JSON.stringify(brief.availableResources || {})}
+${assumptions && assumptions.length > 0 ? `- Confirmed Assumptions: ${JSON.stringify(assumptions)}` : ''}
 ${brief.additionalInstructions ? `- Additional Directives: ${brief.additionalInstructions}` : ''}
 
-Generate 3 distinct campaign directions as a JSON object with a "directions" array of 3 items.`;
+Brand Kit Context: ${JSON.stringify(brandKit || {})}
+References: ${JSON.stringify(campaignReferences || [])}
+Feedback Memory: ${JSON.stringify(feedbackMemory || [])}
+
+Generate 3 distinct strategic directions with different strategic angles.`;
 
     const response = await callGeminiWithRetry(() =>
       ai.models.generateContent({
@@ -168,18 +574,18 @@ Generate 3 distinct campaign directions as a JSON object with a "directions" arr
                 items: {
                   type: Type.OBJECT,
                   properties: {
-                    id: { type: Type.STRING },
+                    strategicAngle: { type: Type.STRING },
                     title: { type: Type.STRING },
                     concept: { type: Type.STRING },
                     coreMessage: { type: Type.STRING },
                     strategicRationale: { type: Type.STRING },
-                    suggestedPillars: {
+                    campaignPillars: {
                       type: Type.ARRAY,
                       items: { type: Type.STRING },
                     },
-                    highLevelDirection: { type: Type.STRING },
+                    directionSpecificPillar: { type: Type.STRING },
                   },
-                  required: ['title', 'concept', 'coreMessage', 'strategicRationale', 'suggestedPillars', 'highLevelDirection'],
+                  required: ['strategicAngle', 'title', 'concept', 'coreMessage', 'strategicRationale', 'campaignPillars'],
                 },
               },
             },
@@ -190,9 +596,17 @@ Generate 3 distinct campaign directions as a JSON object with a "directions" arr
     );
 
     const parsed = JSON.parse(response.text || '{"directions":[]}');
+    const userPillars = brief.contentPillars || [];
     const directions = (parsed.directions || []).map((dir: any, idx: number) => ({
       ...dir,
-      id: dir.id || `dir_${Date.now()}_${idx + 1}`,
+      id: `dir_${Date.now()}_${idx + 1}`,
+      directionNumber: idx + 1,
+      campaignPillars: (dir.campaignPillars && dir.campaignPillars.length > 0) ? dir.campaignPillars : userPillars,
+      shortlisted: false,
+      selectedForPlan: idx === 0, // default select first
+      isEdited: false,
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
     }));
 
     res.json({ success: true, directions });
@@ -202,9 +616,183 @@ Generate 3 distinct campaign directions as a JSON object with a "directions" arr
     res.status(is503 ? 503 : 500).json({
       success: false,
       is503,
-      error: is503
-        ? 'Gemini is temporarily busy due to high demand. Your campaign brief has been saved. Please try again in a few moments.'
-        : error.message || 'Failed to generate campaign directions',
+      error: is503 ? 'Gemini is temporarily busy. Please try again.' : error.message || 'Failed to generate campaign directions',
+    });
+  }
+});
+
+/**
+ * 7. Replace Single Strategic Direction
+ */
+app.post('/api/gemini/replace-direction', async (req, res) => {
+  try {
+    const { brief, existingDirections, directionIndexToReplace, brandKit, products, feedbackMemory } = req.body;
+    const ai = getGeminiClient();
+
+    const otherDirections = (existingDirections || []).filter((_: any, idx: number) => idx !== directionIndexToReplace);
+
+    const systemInstruction = `${FACTUAL_GROUNDING_RULES}
+
+You are generating a SINGLE replacement strategic direction for "3 Dimensions" 3D Printing.
+CRITICAL MANDATE:
+- The new direction MUST have a completely different Strategic Angle and concept from the other existing directions:
+${JSON.stringify(otherDirections.map((d: any) => ({ angle: d.strategicAngle, title: d.title, concept: d.concept })))}
+- Ground all claims in the user brief and approved knowledge.
+- Return a strict JSON object with a single "direction" object.`;
+
+    const prompt = `Campaign Context:
+${JSON.stringify(brief, null, 2)}
+
+Provide 1 fresh, distinct strategic direction replacing direction #${directionIndexToReplace + 1}.`;
+
+    const response = await callGeminiWithRetry(() =>
+      ai.models.generateContent({
+        model: GEMINI_CONFIG.model,
+        contents: prompt,
+        config: {
+          systemInstruction,
+          responseMimeType: 'application/json',
+          responseSchema: {
+            type: Type.OBJECT,
+            properties: {
+              direction: {
+                type: Type.OBJECT,
+                properties: {
+                  strategicAngle: { type: Type.STRING },
+                  title: { type: Type.STRING },
+                  concept: { type: Type.STRING },
+                  coreMessage: { type: Type.STRING },
+                  strategicRationale: { type: Type.STRING },
+                  campaignPillars: {
+                    type: Type.ARRAY,
+                    items: { type: Type.STRING },
+                  },
+                  directionSpecificPillar: { type: Type.STRING },
+                },
+                required: ['strategicAngle', 'title', 'concept', 'coreMessage', 'strategicRationale', 'campaignPillars'],
+              },
+            },
+            required: ['direction'],
+          },
+        },
+      })
+    );
+
+    const parsed = JSON.parse(response.text || '{}');
+    const dir = parsed.direction || {};
+    const newDirection = {
+      ...dir,
+      id: `dir_${Date.now()}_replaced`,
+      directionNumber: directionIndexToReplace + 1,
+      campaignPillars: dir.campaignPillars || brief.contentPillars || [],
+      isReplacement: true,
+      shortlisted: false,
+      selectedForPlan: false,
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+    };
+
+    res.json({ success: true, direction: newDirection });
+  } catch (error: any) {
+    console.error('Error replacing direction:', error);
+    const is503 = error?.status === 503 || error?.message?.includes('503') || error?.message?.includes('UNAVAILABLE');
+    res.status(is503 ? 503 : 500).json({
+      success: false,
+      is503,
+      error: is503 ? 'Gemini is temporarily busy. Please try again.' : error.message || 'Failed to replace direction',
+    });
+  }
+});
+
+/**
+ * 8. Combine Two Shortlisted Directions into a Hybrid Proposal
+ */
+app.post('/api/gemini/combine-directions', async (req, res) => {
+  try {
+    const { brief, direction1, direction2, brandKit, products, feedbackMemory } = req.body;
+    const ai = getGeminiClient();
+
+    const systemInstruction = `${FACTUAL_GROUNDING_RULES}
+
+You are synthesizing TWO shortlisted strategic directions for "3 Dimensions" into a cohesive, superior HYBRID strategic proposal.
+MANDATE:
+- Synthesize the strengths of Direction 1 ("${direction1.title}") and Direction 2 ("${direction2.title}").
+- Create a harmonious unified angle, concept, core message, and rationale.
+- Return a strict JSON object with "hybridDirection" containing:
+  - strategicAngle: string
+  - title: string
+  - concept: string
+  - coreMessage: string
+  - strategicRationale: string
+  - campaignPillars: string[]
+  - directionSpecificPillar: string`;
+
+    const prompt = `Direction 1:
+${JSON.stringify(direction1)}
+
+Direction 2:
+${JSON.stringify(direction2)}
+
+Brief Context:
+${JSON.stringify(brief)}
+
+Generate the synthesized hybrid proposal.`;
+
+    const response = await callGeminiWithRetry(() =>
+      ai.models.generateContent({
+        model: GEMINI_CONFIG.model,
+        contents: prompt,
+        config: {
+          systemInstruction,
+          responseMimeType: 'application/json',
+          responseSchema: {
+            type: Type.OBJECT,
+            properties: {
+              hybridDirection: {
+                type: Type.OBJECT,
+                properties: {
+                  strategicAngle: { type: Type.STRING },
+                  title: { type: Type.STRING },
+                  concept: { type: Type.STRING },
+                  coreMessage: { type: Type.STRING },
+                  strategicRationale: { type: Type.STRING },
+                  campaignPillars: {
+                    type: Type.ARRAY,
+                    items: { type: Type.STRING },
+                  },
+                  directionSpecificPillar: { type: Type.STRING },
+                },
+                required: ['strategicAngle', 'title', 'concept', 'coreMessage', 'strategicRationale', 'campaignPillars'],
+              },
+            },
+            required: ['hybridDirection'],
+          },
+        },
+      })
+    );
+
+    const parsed = JSON.parse(response.text || '{}');
+    const hybrid = parsed.hybridDirection || {};
+    const formattedHybrid = {
+      ...hybrid,
+      id: `dir_${Date.now()}_hybrid`,
+      directionNumber: 4,
+      isHybrid: true,
+      sourceDirectionIds: [direction1.id, direction2.id],
+      shortlisted: true,
+      selectedForPlan: true,
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+    };
+
+    res.json({ success: true, hybridDirection: formattedHybrid });
+  } catch (error: any) {
+    console.error('Error combining directions:', error);
+    const is503 = error?.status === 503 || error?.message?.includes('503') || error?.message?.includes('UNAVAILABLE');
+    res.status(is503 ? 503 : 500).json({
+      success: false,
+      is503,
+      error: is503 ? 'Gemini is temporarily busy. Please try again.' : error.message || 'Failed to combine directions',
     });
   }
 });

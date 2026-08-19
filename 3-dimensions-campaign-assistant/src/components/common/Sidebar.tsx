@@ -15,8 +15,8 @@ import { Logo } from './Logo';
 export type PageId =
   | 'marketing-insights'
   | 'campaign-library'
+  | 'campaign-workspace'
   | 'new-campaign'
-  | 'campaign-plan'
   | 'content-review'
   | 'data-knowledge'
   | 'settings';
@@ -32,7 +32,6 @@ const NAV_ITEMS: { id: PageId; label: string; icon: React.ElementType; badge?: s
   { id: 'marketing-insights', label: 'Marketing Insights', icon: BarChart3 },
   { id: 'campaign-library', label: 'Campaign Library', icon: FolderKanban },
   { id: 'new-campaign', label: 'New Campaign', icon: PlusCircle, badge: 'AI' },
-  { id: 'campaign-plan', label: 'Campaign Plan', icon: FileSpreadsheet },
   { id: 'content-review', label: 'Content Review', icon: CheckCircle2 },
   { id: 'data-knowledge', label: 'Data & Knowledge', icon: Database },
   { id: 'settings', label: 'Settings', icon: SettingsIcon },
@@ -72,8 +71,8 @@ export const Sidebar: React.FC<SidebarProps> = ({
             <span className="truncate font-semibold">{activeCampaignName}</span>
           </div>
           <button
-            onClick={() => onNavigate('campaign-plan')}
-            className="text-[10px] bg-gradient-to-r from-[#172DC3] to-[#6344BF] hover:brightness-110 text-white px-2.5 py-1 rounded-lg font-bold transition shadow-2xs"
+            onClick={() => onNavigate('campaign-workspace')}
+            className="text-[10px] bg-gradient-to-r from-[#172DC3] to-[#6344BF] hover:brightness-110 text-white px-2.5 py-1 rounded-lg font-bold transition shadow-2xs cursor-pointer"
           >
             View
           </button>

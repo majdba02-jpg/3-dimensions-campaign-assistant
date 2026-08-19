@@ -21,21 +21,21 @@ const PAGE_TITLES: Record<PageId, { title: string; subtitle: string }> = {
     title: 'Campaign Library',
     subtitle: 'Manage, duplicate, and track structured 3D printing campaign briefs & plans',
   },
+  'campaign-workspace': {
+    title: 'Campaign Workspace',
+    subtitle: 'Campaign overview, strategic directions, content mix, lockable outputs, and schedule',
+  },
   'new-campaign': {
     title: 'New Campaign Creation',
     subtitle: 'Fill brief specifications, review assumptions, and generate 3 Gemini directions',
-  },
-  'campaign-plan': {
-    title: 'Campaign Plan & Content Calendar',
-    subtitle: 'Detailed strategic directions, content mix, production briefs, and lockable outputs',
   },
   'content-review': {
     title: 'Content Review Workspace',
     subtitle: 'Inspect scripts, captions, versions, staff assignments, and human approval status',
   },
   'data-knowledge': {
-    title: 'Data & Knowledge Management',
-    subtitle: 'Meta CSV dataset validator, Brand Kit, 3D Products catalog, and Feedback Memory',
+    title: 'Data & Knowledge',
+    subtitle: 'Manage marketing data, brand knowledge, products & services, campaign references, and feedback used by campaign generation',
   },
   settings: {
     title: 'Workspace Settings & Directory',
@@ -46,12 +46,15 @@ const PAGE_TITLES: Record<PageId, { title: string; subtitle: string }> = {
 export const Header: React.FC<HeaderProps> = ({
   currentPage,
   onNavigate,
-  datasetRecordCount,
+  datasetRecordCount = 0,
 }) => {
-  const currentInfo = PAGE_TITLES[currentPage];
+  const currentInfo = PAGE_TITLES[currentPage] || {
+    title: '3 Dimensions Assistant',
+    subtitle: 'Marketing & Campaign Intelligence for 3D Printing',
+  };
 
   return (
-    <header className="bg-white/90 backdrop-blur-md border-b border-slate-200 sticky top-0 z-20 px-6 py-4 shadow-2xs">
+    <header className="bg-white border-b border-slate-200 px-6 py-4">
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
         {/* Title & Subtitle */}
         <div>

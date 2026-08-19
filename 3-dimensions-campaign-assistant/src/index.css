@@ -135,6 +135,48 @@
   background-color: #DC2626;
 }
 
+.btn-ai {
+  background: linear-gradient(135deg, rgba(99, 68, 191, 0.08) 0%, rgba(203, 25, 194, 0.08) 100%);
+  color: #6344BF;
+  font-weight: 700;
+  border: 1px solid rgba(99, 68, 191, 0.25);
+  border-radius: var(--radius-md);
+  transition: all var(--transition-fast);
+}
+
+.btn-ai:hover:not(:disabled) {
+  background: linear-gradient(135deg, rgba(99, 68, 191, 0.16) 0%, rgba(203, 25, 194, 0.16) 100%);
+  border-color: rgba(99, 68, 191, 0.45);
+  color: #160857;
+  transform: translateY(-0.5px);
+}
+
+.input-standard {
+  background-color: #ffffff;
+  border: 1px solid #E2E8F0;
+  border-radius: 0.75rem;
+  padding: 0.5rem 0.875rem;
+  font-size: 0.875rem;
+  color: #15192B;
+  transition: border-color var(--transition-fast), box-shadow var(--transition-fast);
+}
+
+.input-standard:focus {
+  outline: none;
+  border-color: #172DC3;
+  box-shadow: 0 0 0 3px rgba(23, 45, 195, 0.12);
+}
+
+.input-standard::placeholder {
+  color: #94A3B8;
+}
+
+.input-standard:disabled {
+  background-color: #F8FAFC;
+  color: #94A3B8;
+  cursor: not-allowed;
+}
+
 /* Card Surface Hierarchy */
 .card-tier-1 {
   background-color: #ffffff;

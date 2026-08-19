@@ -6,7 +6,7 @@ export type CampaignStatus = 'Draft' | 'In Progress' | 'In Review' | 'Approved' 
 
 export type AudienceSegment = 'B2B' | 'B2C' | 'Both';
 
-export type CampaignType =
+export type DefaultCampaignType =
   | 'Product Launch'
   | 'Promotional Offer'
   | 'Seasonal Campaign'
@@ -17,11 +17,120 @@ export type CampaignType =
   | 'Behind the Scenes'
   | 'Event / Exhibition';
 
-export type PlatformType = 'Facebook' | 'Instagram' | 'LinkedIn' | 'TikTok' | 'WhatsApp' | 'Website';
+export type CampaignType = DefaultCampaignType | string;
 
-export type ContentFormat = 'Reel' | 'Feed Photo' | 'Carousel' | 'Story' | 'Video Short' | 'Article/Post';
+export type PlatformType = 'Meta' | 'Instagram' | 'Facebook' | 'TikTok' | string;
 
-export type LanguageOption = 'English' | 'Tunisian Darija (Arabic Script)' | 'Multilingual (English & Darija)';
+export type TargetPlatform = 'Meta' | 'Instagram' | 'Facebook' | 'TikTok';
+
+export type ContentFormat = 'Reel / Video' | 'Carousel' | 'Story' | 'Feed Photo' | 'Feed Post' | string;
+
+export type CampaignLanguage = 'Tunisian Darija' | 'English' | 'French';
+
+export type LanguageOption = 'Tunisian Darija' | 'English' | 'French' | string;
+
+export type PromotionTargetType = 'Product' | 'Service' | 'Both';
+
+export interface CampaignPromotionItem {
+  id: string;
+  type: 'Product' | 'Service';
+  name: string;
+  description?: string;
+  notesOrSpecs?: string;
+  imageUrl?: string;
+  campaignProvided: boolean; // true if added inline during campaign creation
+  approvedKnowledge: boolean; // true if from approved catalog
+  originalCatalogId?: string;
+}
+
+export interface LocationGroup {
+  id: string;
+  name: string;
+  governorates: string[];
+  isCustom?: boolean;
+}
+
+export interface CampaignUploadedAsset {
+  id: string;
+  name: string;
+  fileName?: string;
+  dataUrl: string; // base64 or url
+  url?: string;
+  type: 'Product Image' | 'Existing Asset' | 'Reference Image' | 'Brand Asset' | string;
+  fileType?: 'image' | 'video' | 'document';
+  size?: number;
+  fileSize?: number;
+  uploadedAt: string;
+}
+
+export interface AvailableResources {
+  hasProductPhotos?: boolean;
+  hasVideoFootage?: boolean;
+  hasExistingGraphics?: boolean;
+  hasProductForShooting?: boolean;
+  hasTeamOnCamera?: boolean;
+  hasTestimonialMaterial?: boolean;
+  photos?: boolean;
+  shortFormVideo?: boolean;
+  longFormVideo?: boolean;
+  physicalProductsForPhotoshoots?: boolean;
+  founderOrTeamOnCamera?: boolean;
+  customerTestimonialsOrUGC?: boolean;
+  budgetForPaidAds?: boolean;
+  inHouseDesigner?: boolean;
+  notes?: string;
+  [key: string]: boolean | string | undefined;
+}
+
+export interface AssumptionItem {
+  id: string;
+  category: string;
+  proposedValue: string;
+  rationale: string;
+  sourceTags: string[]; // e.g. ['Campaign Brief', 'Brand Kit', 'Selected Product', 'Feedback Memory']
+  status: 'Accepted' | 'Edited' | 'Rejected' | 'Pending';
+  editedValue?: string;
+}
+
+export interface StrategicDirection {
+  id: string;
+  directionNumber: number;
+  strategicAngle: string;
+  title: string;
+  concept: string;
+  coreMessage: string;
+  strategicRationale: string;
+  campaignPillars: string[];
+  directionSpecificPillar?: string;
+  shortlisted?: boolean;
+  selectedForPlan?: boolean;
+  isHybrid?: boolean;
+  isReplacement?: boolean;
+  isEdited?: boolean;
+  sourceDirectionIds?: string[];
+  accentColorHex?: string;
+  originalText?: {
+    title: string;
+    concept: string;
+    coreMessage: string;
+    strategicRationale: string;
+  };
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface CustomCampaignType {
+  id: string;
+  name: string;
+  createdAt: string;
+}
+
+export interface CustomTargetAudience {
+  id: string;
+  name: string;
+  description?: string;
+  createdAt: string;
+}
 
 // Raw or normalized Meta analytics record parsed from CSV
 export interface MarketingDataRecord {
@@ -72,9 +181,9 @@ export interface CampaignBrief {
   objective: string;
   type: CampaignType;
   audienceSegment: AudienceSegment;
-  productOrService: string;
+  productOrService?: string;
   targetAudience: string;
-  audienceAge: string;
+  audienceAge?: string;
   startDate: string;
   endDate: string;
   durationDays: number;
@@ -82,7 +191,38 @@ export interface CampaignBrief {
   language: LanguageOption;
   desiredFormats: ContentFormat[];
   cta: string;
-  // Optional fields
+
+  // New Redesigned Workflow Fields
+  promotingType?: PromotionTargetType;
+  promotionItems?: CampaignPromotionItem[];
+  selectedProductIds?: string[];
+  selectedServiceIds?: string[];
+  customNewItems?: CampaignPromotionItem[];
+  targetAudiences?: string[];
+  audienceNotes?: string;
+  minAge?: string;
+  maxAge?: string;
+  languages?: CampaignLanguage[];
+  targetPlatforms?: TargetPlatform[];
+  locations?: string[];
+  locationGroups?: string[];
+  campaignToneList?: string[];
+  keyMessage?: string;
+  primaryKPIs?: string[];
+  primaryKPI?: string;
+  funnelIntent?: 'Awareness' | 'Consideration' | 'Conversion' | 'Retention';
+  promotionOffer?: string;
+  campaignPalette?: string[];
+  uploadedAssets?: CampaignUploadedAsset[];
+  selectedReferenceIds?: string[];
+  customReferenceNotes?: string;
+  availableResources?: AvailableResources;
+  assumptions?: AssumptionItem[];
+  strategicDirections?: StrategicDirection[];
+  selectedDirection?: StrategicDirection;
+  draftSavedAt?: string;
+
+  // Optional legacy/generic fields
   location?: string;
   industry?: string;
   buyerPersona?: string;
@@ -95,6 +235,7 @@ export interface CampaignBrief {
   assetAvailability?: string;
   additionalInstructions?: string;
   contentPillars?: string[];
+
   // Status tracking
   status: CampaignStatus;
   createdAt: string;
@@ -229,13 +370,30 @@ export interface FeedbackMemoryItem {
   rating: 'Positive' | 'Negative' | 'Neutral';
   explanation: string;
   correctedVersion?: string;
-  campaignType: CampaignType;
-  audienceSegment: AudienceSegment;
-  contentFormat: ContentFormat;
-  language: LanguageOption;
-  originalGeneratedContent: string;
+  campaignId?: string;
+  campaignName?: string;
+  contentItemId?: string;
+  campaignType?: CampaignType;
+  audienceSegment?: AudienceSegment;
+  platform?: PlatformType;
+  contentFormat?: ContentFormat;
+  language?: LanguageOption;
+  originalGeneratedContent?: string;
   humanEditedContent?: string;
   createdAt: string;
+}
+
+export interface BrandColorItem {
+  id: string;
+  hex: string;
+  label?: string;
+}
+
+export interface LanguageStyleExample {
+  id: string;
+  title: string;
+  text: string;
+  note?: string;
 }
 
 export interface BrandKit {
@@ -243,25 +401,57 @@ export interface BrandKit {
   companyDescription: string;
   brandTone: string;
   logoUrl?: string;
-  primaryColorHex: string; // #1e1b4b
-  accentColorHex: string;  // #6366f1
-  secondaryColorHex: string; // #9333ea
+  logoFileName?: string;
+  primaryColorHex: string; // #160857
+  accentColorHex: string;  // #CB19C2
+  secondaryColorHex: string; // #6344BF
+  primaryColors?: string[];
+  brandColors?: BrandColorItem[];
   preferredTerminology: string[];
+  approvedClaims?: string[];
   wordsToAvoid: string[];
-  englishStyleExamples: string[];
-  darijaStyleExamples: string[]; // Arabic script with French/English terms
+  englishStyleExamples: (string | LanguageStyleExample)[];
+  darijaStyleExamples: (string | LanguageStyleExample)[]; // Arabic script with French/English terms
+  frenchStyleExamples?: (string | LanguageStyleExample)[];
+  additionalBrandInstructions?: string;
+}
+
+export interface ProductMediaItem {
+  id: string;
+  type: 'image' | 'document';
+  name: string;
+  url: string;
+  label?: string;
+  uploadedAt: string;
 }
 
 export interface ProductService {
   id: string;
+  type?: 'Product' | 'Service';
   name: string;
   category: string; // e.g. "Custom Prototyping", "Consumer Gadget", "3D Scanning", "Corporate Trophies"
   description: string;
-  technicalSpecs: string;
-  materials: string[]; // PLA, PETG, Resin, ABS, TPU
-  approvedClaims: string[];
+  technicalSpecs?: string;
+  materials?: string[]; // PLA, PETG, Resin, ABS, TPU
+  approvedClaims?: string[];
+  claimsToAvoid?: string[];
   referenceLinks?: string[];
+  referenceDocs?: ProductMediaItem[];
+  images?: ProductMediaItem[];
   imageUrl?: string;
+  additionalNotes?: string;
+  approvalStatus?: 'Approved' | 'Pending' | 'Archived';
+  originatingCampaignId?: string;
+  originatingCampaignName?: string;
+  createdAt?: string;
+  updatedAt?: string;
+}
+
+export interface ReferenceAttachment {
+  id: string;
+  name: string;
+  url: string;
+  type: 'image' | 'video' | 'document';
 }
 
 export interface CampaignReference {
@@ -270,19 +460,44 @@ export interface CampaignReference {
   type: CampaignType;
   audienceSegment?: AudienceSegment;
   language?: LanguageOption;
+  languages?: LanguageOption[];
+  platform?: PlatformType;
+  platforms?: PlatformType[];
   captionCopy?: string;
   whyUsefulNotes?: string;
   summary?: string;
   keyTakeaways?: string;
   performanceNotes?: string;
+  attachments?: ReferenceAttachment[];
+  sourceCampaign?: string;
   createdAt: string;
 }
+
+export const DEFAULT_STAFF_ROLES = [
+  'Marketing Manager',
+  'Production Manager',
+  'Sales Manager',
+  'Communication Manager',
+  'Photographer',
+  'Videographer',
+  '3D Designer',
+] as const;
+
+export type DefaultStaffRole = typeof DEFAULT_STAFF_ROLES[number];
+export type StaffRole = DefaultStaffRole | string;
 
 export interface StaffMember {
   id: string;
   name: string;
-  role: 'Marketing Manager' | 'Production Manager' | 'Sales Manager' | 'Communication Manager' | 'Photographer' | 'Videographer' | '3D Designer';
+  role: string;
   email?: string;
+  phoneNumber?: string;
+}
+
+export interface CustomRole {
+  id: string;
+  name: string;
+  createdAt: string;
 }
 
 export interface WidgetPreference {

@@ -10,6 +10,7 @@ import {
   BrandKit,
   ProductService,
   StaffMember,
+  CustomRole,
   WidgetPreference,
   AppSettings,
   CalendarItem,
@@ -25,7 +26,7 @@ import { ToastProvider, useToast } from './components/common/Toast';
 import { MarketingInsights } from './pages/MarketingInsights';
 import { CampaignLibrary } from './pages/CampaignLibrary';
 import { NewCampaign } from './pages/NewCampaign';
-import { CampaignPlan } from './pages/CampaignPlan';
+import { CampaignWorkspace } from './pages/CampaignWorkspace';
 import { ContentReview } from './pages/ContentReview';
 import { DataKnowledge } from './pages/DataKnowledge';
 import { SettingsPage } from './pages/Settings';
@@ -47,11 +48,13 @@ function MainAppContent() {
   const [brandKit, setBrandKit] = useState<BrandKit | null>(null);
   const [products, setProducts] = useState<ProductService[]>([]);
   const [staffMembers, setStaffMembers] = useState<StaffMember[]>([]);
+  const [customRoles, setCustomRoles] = useState<CustomRole[]>([]);
   const [widgetPrefs, setWidgetPrefs] = useState<WidgetPreference[]>([]);
   const [appSettings, setAppSettings] = useState<AppSettings | null>(null);
   const [feedbackMemory, setFeedbackMemory] = useState<FeedbackMemoryItem[]>([]);
   const [campaignReferences, setCampaignReferences] = useState<CampaignReference[]>([]);
   const [selectedReviewAssetId, setSelectedReviewAssetId] = useState<string | undefined>(undefined);
+  const [briefBuilderInitialBrief, setBriefBuilderInitialBrief] = useState<CampaignBrief | null>(null);
 
   // Initialize DB & Seed Data
   useEffect(() => {
@@ -66,6 +69,7 @@ function MainAppContent() {
           kit,
           prods,
           staff,
+          roles,
           widgets,
           settings,
           feedback,
@@ -78,6 +82,7 @@ function MainAppContent() {
           repository.getBrandKit(),
           repository.getProducts(),
           repository.getStaffMembers(),
+          repository.getCustomRoles(),
           repository.getWidgetPreferences(),
           repository.getAppSettings(),
           repository.getFeedbackMemory(),
@@ -91,18 +96,64 @@ function MainAppContent() {
         setBrandKit(kit);
         setProducts(prods);
         setStaffMembers(staff);
+        setCustomRoles(roles);
         setWidgetPrefs(widgets);
         setAppSettings(settings);
         setFeedbackMemory(feedback);
         setContentAssets(assets);
         setCampaignReferences(refs);
 
-        if (briefs.length > 0) {
-          const firstBrief = briefs[0];
-          setActiveBrief(firstBrief);
-          const plan = await repository.getCampaignPlan(firstBrief.id);
-          if (plan) setActivePlan(plan);
+        // Routing & URL Hash Resolution on Initial Load / Refresh
+        const hash = window.location.hash;
+        let initialPage: PageId = 'marketing-insights';
+        let targetCampaignId: string | null = null;
+
+        if (hash.startsWith('#/campaigns/')) {
+          targetCampaignId = decodeURIComponent(hash.slice('#/campaigns/'.length));
+          initialPage = 'campaign-workspace';
+        } else if (hash === '#/campaign-library') {
+          initialPage = 'campaign-library';
+        } else if (hash === '#/new-campaign') {
+          initialPage = 'new-campaign';
+        } else if (hash === '#/content-review') {
+          initialPage = 'content-review';
+        } else if (hash === '#/data-knowledge') {
+          initialPage = 'data-knowledge';
+        } else if (hash === '#/settings') {
+          initialPage = 'settings';
+        } else {
+          // Check localStorage for saved session
+          const savedPage = localStorage.getItem('3d_active_page') as PageId | null;
+          const savedCampId = localStorage.getItem('3d_active_campaign_id');
+          if (savedPage === 'campaign-workspace' && savedCampId) {
+            targetCampaignId = savedCampId;
+            initialPage = 'campaign-workspace';
+          } else if (savedPage) {
+            initialPage = savedPage;
+          }
         }
+
+        let selectedBrief: CampaignBrief | null = null;
+        let selectedPlan: CampaignPlanType | null = null;
+
+        if (targetCampaignId) {
+          selectedBrief = briefs.find((b) => b.id === targetCampaignId) || (await repository.getCampaignBriefById(targetCampaignId)) || null;
+          if (selectedBrief) {
+            selectedPlan = await repository.getCampaignPlan(selectedBrief.id);
+          }
+        }
+
+        if (!selectedBrief && briefs.length > 0) {
+          selectedBrief = briefs[0];
+          selectedPlan = await repository.getCampaignPlan(selectedBrief.id);
+        }
+
+        if (selectedBrief) {
+          setActiveBrief(selectedBrief);
+          if (selectedPlan) setActivePlan(selectedPlan);
+        }
+
+        setCurrentPage(initialPage);
       } catch (err) {
         console.error('Failed to initialize application data:', err);
         showToast('Error loading saved database', 'error');
@@ -232,8 +283,11 @@ function MainAppContent() {
       setContentAssets((prev) => [...createdAssets, ...prev]);
 
       showToast('Campaign Plan successfully generated & saved!', 'success');
-      // Navigate to Campaign Plan
-      setCurrentPage('campaign-plan');
+      // Navigate to Campaign Workspace
+      localStorage.setItem('3d_active_campaign_id', brief.id);
+      localStorage.setItem('3d_active_page', 'campaign-workspace');
+      window.location.hash = `#/campaigns/${encodeURIComponent(brief.id)}`;
+      setCurrentPage('campaign-workspace');
     } catch (error) {
       console.error('Plan generation error:', error);
       showToast('Failed to generate full campaign plan: ' + (error as any).message, 'error');
@@ -287,34 +341,47 @@ function MainAppContent() {
     }
   };
 
-  // Select campaign from library
+  // Select campaign from library -> Navigate to Campaign Workspace
   const handleSelectCampaign = async (campaignId: string) => {
-    const brief = campaigns.find((c) => c.id === campaignId);
+    const brief =
+      campaigns.find((c) => c.id === campaignId) ||
+      (await repository.getCampaignBriefById(campaignId));
     if (!brief) return;
 
     setActiveBrief(brief);
     const plan = await repository.getCampaignPlan(campaignId);
     setActivePlan(plan);
     const assets = await repository.getContentAssets(campaignId);
-    setContentAssets(assets);
+    setContentAssets((prev) => [
+      ...assets,
+      ...prev.filter((a) => a.campaignId !== campaignId),
+    ]);
 
-    setCurrentPage('campaign-plan');
+    localStorage.setItem('3d_active_campaign_id', campaignId);
+    localStorage.setItem('3d_active_page', 'campaign-workspace');
+    window.location.hash = `#/campaigns/${encodeURIComponent(campaignId)}`;
+    setCurrentPage('campaign-workspace');
   };
 
-  // Duplicate campaign brief
+  // Duplicate campaign (true deep copy)
   const handleDuplicateCampaign = async (brief: CampaignBrief) => {
-    const dupBrief: CampaignBrief = {
-      ...brief,
-      id: `camp_${Date.now()}`,
-      name: `Copy of ${brief.name}`,
-      status: 'Draft',
-      createdAt: new Date().toISOString(),
-      updatedAt: new Date().toISOString(),
-    };
+    showToast('Duplicating campaign...', 'info');
+    try {
+      const { brief: dupBrief, plan: dupPlan, assets: dupAssets } =
+        await repository.duplicateCampaign(brief.id);
 
-    await repository.saveCampaignBrief(dupBrief);
-    setCampaigns((prev) => [dupBrief, ...prev]);
-    showToast(`Duplicated brief: "${dupBrief.name}"`, 'success');
+      setCampaigns((prev) => [dupBrief, ...prev]);
+      if (dupAssets && dupAssets.length > 0) {
+        setContentAssets((prev) => [...dupAssets, ...prev]);
+      }
+      showToast('Campaign duplicated successfully.', 'success');
+    } catch (error: any) {
+      console.error('Campaign duplication error:', error);
+      showToast(
+        'Failed to duplicate campaign: ' + (error?.message || 'Unknown error'),
+        'error'
+      );
+    }
   };
 
   // Delete campaign
@@ -322,12 +389,23 @@ function MainAppContent() {
     if (confirm('Are you sure you want to delete this campaign?')) {
       await repository.deleteCampaignBrief(campaignId);
       setCampaigns((prev) => prev.filter((c) => c.id !== campaignId));
+      setContentAssets((prev) => prev.filter((a) => a.campaignId !== campaignId));
       if (activeBrief?.id === campaignId) {
         setActiveBrief(null);
         setActivePlan(null);
       }
-      showToast('Campaign brief deleted.', 'info');
+      showToast('Campaign deleted.', 'info');
     }
+  };
+
+  // Save updated campaign brief (e.g. name or fields)
+  const handleSaveBrief = async (updatedBrief: CampaignBrief) => {
+    await repository.saveCampaignBrief(updatedBrief);
+    setActiveBrief(updatedBrief);
+    setCampaigns((prev) =>
+      prev.map((c) => (c.id === updatedBrief.id ? updatedBrief : c))
+    );
+    showToast('Campaign details updated.', 'success');
   };
 
   // Save updated plan calendar / staff assignments
@@ -442,7 +520,24 @@ function MainAppContent() {
       {/* Sidebar Navigation */}
       <Sidebar
         currentPage={currentPage}
-        onNavigate={setCurrentPage}
+        onNavigate={(page) => {
+          if (page === 'new-campaign') {
+            setBriefBuilderInitialBrief(null);
+          }
+          if (page === 'campaign-workspace') {
+            if (activeBrief) {
+              window.location.hash = `#/campaigns/${encodeURIComponent(activeBrief.id)}`;
+            } else {
+              window.location.hash = '#/campaign-library';
+              setCurrentPage('campaign-library');
+              return;
+            }
+          } else {
+            window.location.hash = `#/${page}`;
+          }
+          localStorage.setItem('3d_active_page', page);
+          setCurrentPage(page);
+        }}
         activeCampaignName={activeBrief?.name}
         isGenerating={isGenerating}
       />
@@ -451,7 +546,24 @@ function MainAppContent() {
       <div className="flex-1 flex flex-col min-w-0 overflow-y-auto">
         <Header
           currentPage={currentPage}
-          onNavigate={setCurrentPage}
+          onNavigate={(page) => {
+            if (page === 'new-campaign') {
+              setBriefBuilderInitialBrief(null);
+            }
+            if (page === 'campaign-workspace') {
+              if (activeBrief) {
+                window.location.hash = `#/campaigns/${encodeURIComponent(activeBrief.id)}`;
+              } else {
+                window.location.hash = '#/campaign-library';
+                setCurrentPage('campaign-library');
+                return;
+              }
+            } else {
+              window.location.hash = `#/${page}`;
+            }
+            localStorage.setItem('3d_active_page', page);
+            setCurrentPage(page);
+          }}
           datasetRecordCount={marketingRecords.length}
         />
 
@@ -472,32 +584,56 @@ function MainAppContent() {
             <CampaignLibrary
               campaigns={campaigns}
               onSelectCampaign={handleSelectCampaign}
-              onNewCampaign={() => setCurrentPage('new-campaign')}
+              onNewCampaign={() => {
+                setBriefBuilderInitialBrief(null);
+                window.location.hash = '#/new-campaign';
+                localStorage.setItem('3d_active_page', 'new-campaign');
+                setCurrentPage('new-campaign');
+              }}
               onDuplicateCampaign={handleDuplicateCampaign}
               onDeleteCampaign={handleDeleteCampaign}
+              onEditDraft={(draft) => {
+                setBriefBuilderInitialBrief(draft);
+                window.location.hash = '#/new-campaign';
+                localStorage.setItem('3d_active_page', 'new-campaign');
+                setCurrentPage('new-campaign');
+              }}
+            />
+          )}
+
+          {currentPage === 'campaign-workspace' && (
+            <CampaignWorkspace
+              brief={activeBrief}
+              plan={activePlan}
+              staffMembers={staffMembers}
+              onBackToLibrary={() => {
+                window.location.hash = '#/campaign-library';
+                localStorage.setItem('3d_active_page', 'campaign-library');
+                setCurrentPage('campaign-library');
+              }}
+              onEditDraft={(draft) => {
+                setBriefBuilderInitialBrief(draft);
+                window.location.hash = '#/new-campaign';
+                localStorage.setItem('3d_active_page', 'new-campaign');
+                setCurrentPage('new-campaign');
+              }}
+              onSavePlan={handleSavePlan}
+              onSaveBrief={handleSaveBrief}
+              onRegenerateComponent={handleRegenerateComponent}
+              isGenerating={isGenerating}
+              onOpenContentReview={handleOpenReviewFromCalendar}
             />
           )}
 
           {currentPage === 'new-campaign' && (
             <NewCampaign
+              initialBrief={briefBuilderInitialBrief}
               products={products}
               brandKit={brandKit}
               campaignReferences={campaignReferences}
               onGenerateDirections={handleGenerateDirections}
               onSelectDirectionAndBuildPlan={handleSelectDirectionAndBuildPlan}
               isGenerating={isGenerating}
-            />
-          )}
-
-          {currentPage === 'campaign-plan' && (
-            <CampaignPlan
-              brief={activeBrief}
-              plan={activePlan}
-              staffMembers={staffMembers}
-              onSavePlan={handleSavePlan}
-              onRegenerateComponent={handleRegenerateComponent}
-              isGenerating={isGenerating}
-              onOpenContentReview={handleOpenReviewFromCalendar}
             />
           )}
 
@@ -518,6 +654,7 @@ function MainAppContent() {
               products={products}
               feedbackMemory={feedbackMemory}
               datasetMetadata={datasetMeta}
+              marketingRecords={marketingRecords}
               campaignReferences={campaignReferences}
               onSaveBrandKit={async (kit) => {
                 setBrandKit(kit);
@@ -545,15 +682,48 @@ function MainAppContent() {
                 showToast('Campaign Reference removed.', 'info');
               }}
               onImportNewCSV={handleImportNewCSV}
+              onSetActiveDataset={async (fileName) => {
+                await repository.setActiveDataset(fileName);
+                const updatedMeta = await repository.getDatasetMetadata();
+                const updatedRecords = await repository.getMarketingData();
+                setDatasetMeta(updatedMeta);
+                setMarketingRecords(updatedRecords);
+                showToast(`Active dataset switched to "${fileName}".`, 'success');
+              }}
               onDeleteDataset={handleDeleteDataset}
               onReloadDefaultDataset={handleReloadDefaultDataset}
               onClearAllData={handleClearAllData}
+              onDeleteFeedbackMemory={async (id) => {
+                await repository.deleteFeedbackMemory(id);
+                setFeedbackMemory(await repository.getFeedbackMemory());
+                showToast('Feedback memory entry removed.', 'info');
+              }}
+              onClearFeedbackMemory={async () => {
+                await repository.clearFeedbackMemory();
+                setFeedbackMemory([]);
+                showToast('All feedback memories cleared.', 'info');
+              }}
+              onRefreshData={async () => {
+                const [prods, refs, feedback, meta, records] = await Promise.all([
+                  repository.getProducts(),
+                  repository.getCampaignReferences(),
+                  repository.getFeedbackMemory(),
+                  repository.getDatasetMetadata(),
+                  repository.getMarketingData(),
+                ]);
+                setProducts(prods);
+                setCampaignReferences(refs);
+                setFeedbackMemory(feedback);
+                setDatasetMeta(meta);
+                setMarketingRecords(records);
+              }}
             />
           )}
 
           {currentPage === 'settings' && (
             <SettingsPage
               staffMembers={staffMembers}
+              customRoles={customRoles}
               appSettings={appSettings!}
               onSaveStaff={async (s) => {
                 await repository.saveStaffMember(s);
@@ -564,6 +734,29 @@ function MainAppContent() {
                 await repository.deleteStaffMember(sId);
                 setStaffMembers(await repository.getStaffMembers());
                 showToast('Staff member removed.', 'info');
+              }}
+              onSaveCustomRole={async (name) => {
+                const created = await repository.saveCustomRole(name);
+                setCustomRoles(await repository.getCustomRoles());
+                showToast(`Role "${created.name}" created.`, 'success');
+                return created;
+              }}
+              onUpdateCustomRole={async (id, newName) => {
+                const result = await repository.updateCustomRole(id, newName);
+                if (result.success) {
+                  setCustomRoles(await repository.getCustomRoles());
+                  setStaffMembers(await repository.getStaffMembers());
+                  showToast(`Role updated to "${newName}".`, 'success');
+                }
+                return result;
+              }}
+              onDeleteCustomRole={async (id) => {
+                const result = await repository.deleteCustomRole(id);
+                if (result.success) {
+                  setCustomRoles(await repository.getCustomRoles());
+                  showToast('Custom role deleted.', 'info');
+                }
+                return result;
               }}
               onSaveAppSettings={async (stg) => {
                 setAppSettings(stg);

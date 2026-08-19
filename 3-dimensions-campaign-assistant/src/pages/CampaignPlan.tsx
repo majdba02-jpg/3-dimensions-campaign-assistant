@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   CampaignBrief,
   CampaignPlan as CampaignPlanType,
@@ -18,13 +18,17 @@ import {
   Film,
   Image as ImageIcon,
   AlertTriangle,
+  Edit3,
+  X,
 } from 'lucide-react';
+import { StaffProfilePopover } from '../components/StaffProfilePopover';
 
 interface CampaignPlanProps {
   brief: CampaignBrief | null;
   plan: CampaignPlanType | null;
   staffMembers: StaffMember[];
   onSavePlan: (updatedPlan: CampaignPlanType) => Promise<void>;
+  onSaveBrief?: (updatedBrief: CampaignBrief) => Promise<void>;
   onRegenerateComponent: (
     componentKey: string,
     lockedKeys: string[],
@@ -39,6 +43,7 @@ export const CampaignPlan: React.FC<CampaignPlanProps> = ({
   plan,
   staffMembers,
   onSavePlan,
+  onSaveBrief,
   onRegenerateComponent,
   isGenerating,
   onOpenContentReview,
@@ -46,6 +51,15 @@ export const CampaignPlan: React.FC<CampaignPlanProps> = ({
   const [calendarView, setCalendarView] = useState<'grid' | 'table'>('table');
   const [lockedComponents, setLockedComponents] = useState<Record<string, boolean>>({});
   const [copiedNotice, setCopiedNotice] = useState(false);
+  const [isEditingName, setIsEditingName] = useState(false);
+  const [nameInput, setNameInput] = useState(brief?.name || '');
+
+  useEffect(() => {
+    if (brief) {
+      setNameInput(brief.name);
+      setIsEditingName(false);
+    }
+  }, [brief?.id, brief?.name]);
 
   if (!plan || !brief) {
     return (
@@ -53,13 +67,28 @@ export const CampaignPlan: React.FC<CampaignPlanProps> = ({
         <div className="w-12 h-12 rounded-2xl bg-indigo-50 border border-indigo-100 flex items-center justify-center text-[#172DC3] mb-3">
           <CalendarIcon className="w-6 h-6" />
         </div>
-        <h3 className="font-bold text-[#15192B] text-base">No Campaign Plan Selected</h3>
+        <h3 className="font-bold text-[#15192B] text-base">
+          {brief ? `No Campaign Plan Generated for "${brief.name}"` : 'No Campaign Plan Selected'}
+        </h3>
         <p className="text-xs text-slate-500 mt-1 max-w-sm">
-          Please create a new campaign or select an existing campaign from the Campaign Library.
+          {brief
+            ? 'This campaign brief does not have a generated plan yet. You can generate directions and a plan from the campaign brief.'
+            : 'Please create a new campaign or select an existing campaign from the Campaign Library.'}
         </p>
       </div>
     );
   }
+
+  const handleSaveName = async () => {
+    if (!nameInput.trim() || !onSaveBrief) return;
+    const updated = {
+      ...brief,
+      name: nameInput.trim(),
+      updatedAt: new Date().toISOString(),
+    };
+    await onSaveBrief(updated);
+    setIsEditingName(false);
+  };
 
   const toggleLock = (key: string) => {
     setLockedComponents((prev) => ({ ...prev, [key]: !prev[key] }));
@@ -120,7 +149,52 @@ ${plan.calendar
             <span className="text-xs text-slate-500 font-medium">• {brief.audienceSegment} Audience</span>
             <span className="text-xs text-slate-500 font-medium">• {brief.language}</span>
           </div>
-          <h1 className="text-xl font-black text-[#15192B]">{brief.name}</h1>
+          {isEditingName ? (
+            <div className="flex items-center gap-2 mt-1 mb-1">
+              <input
+                type="text"
+                value={nameInput}
+                onChange={(e) => setNameInput(e.target.value)}
+                className="text-lg font-black text-[#15192B] border border-indigo-300 rounded-lg px-2.5 py-1 bg-white focus:outline-none focus:ring-2 focus:ring-[#172DC3]/30"
+                autoFocus
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') handleSaveName();
+                  if (e.key === 'Escape') {
+                    setNameInput(brief.name);
+                    setIsEditingName(false);
+                  }
+                }}
+              />
+              <button
+                onClick={handleSaveName}
+                className="btn-primary text-xs px-2.5 py-1 font-bold"
+              >
+                Save
+              </button>
+              <button
+                onClick={() => {
+                  setNameInput(brief.name);
+                  setIsEditingName(false);
+                }}
+                className="btn-secondary text-xs px-2.5 py-1 font-bold"
+              >
+                Cancel
+              </button>
+            </div>
+          ) : (
+            <div className="flex items-center gap-2 group/title">
+              <h1 className="text-xl font-black text-[#15192B]">{brief.name}</h1>
+              {onSaveBrief && (
+                <button
+                  onClick={() => setIsEditingName(true)}
+                  title="Edit campaign name"
+                  className="opacity-60 hover:opacity-100 p-1 text-slate-400 hover:text-[#172DC3] transition"
+                >
+                  <Edit3 className="w-3.5 h-3.5" />
+                </button>
+              )}
+            </div>
+          )}
           <p className="text-xs text-slate-600 font-medium mt-1">
             Product: <strong className="text-[#15192B]">{brief.productOrService}</strong> | Goal: {brief.objective}
           </p>
@@ -382,20 +456,39 @@ ${plan.calendar
                       <p className="text-xs text-slate-600 line-clamp-2 mt-1">{item.caption}</p>
                     </td>
                     <td className="py-3 px-3 text-slate-700 font-medium max-w-xs">{item.cta}</td>
-                    <td className="py-3 px-3 min-w-[160px]">
-                      {/* Concerned People Dropdown Selector */}
-                      <div className="space-y-1">
+                    <td className="py-3 px-3 min-w-[170px]">
+                      {/* Concerned People Dropdown Selector & Interactive Chips */}
+                      <div className="space-y-1.5">
                         <div className="flex flex-wrap gap-1">
                           {(item.concernedPeopleIds || []).map((staffId) => {
                             const staff = staffMembers.find((s) => s.id === staffId);
-                            return staff ? (
-                              <span
+                            if (!staff) return null;
+                            return (
+                              <div
                                 key={staff.id}
-                                className="bg-indigo-50 text-[#172DC3] border border-indigo-100 text-[10px] px-2 py-0.5 rounded-md font-bold"
+                                className="inline-flex items-center gap-1 bg-indigo-50/90 hover:bg-indigo-100/90 text-[#172DC3] border border-indigo-200/90 text-[10px] pl-1.5 pr-1 py-0.5 rounded-md font-bold transition shadow-2xs"
                               >
-                                {staff.name.split(' ')[0]} ({staff.role.slice(0, 4)})
-                              </span>
-                            ) : null;
+                                <StaffProfilePopover staff={staff}>
+                                  <span className="cursor-pointer hover:underline flex items-center gap-1">
+                                    <span>{staff.name}</span>
+                                    <span className="text-[9px] text-slate-500 font-semibold border-l border-indigo-200 pl-1 ml-0.5">
+                                      {staff.role}
+                                    </span>
+                                  </span>
+                                </StaffProfilePopover>
+                                <button
+                                  type="button"
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    handleAssignStaff(item.id, staff.id);
+                                  }}
+                                  className="text-slate-400 hover:text-rose-600 rounded p-0.5 transition ml-0.5"
+                                  title={`Unassign ${staff.name}`}
+                                >
+                                  <X className="w-2.5 h-2.5" />
+                                </button>
+                              </div>
+                            );
                           })}
                         </div>
 
@@ -404,7 +497,7 @@ ${plan.calendar
                             if (e.target.value) handleAssignStaff(item.id, e.target.value);
                             e.target.value = '';
                           }}
-                          className="text-[10px] bg-slate-50 border border-slate-200 rounded-lg px-2 py-1 w-full font-medium"
+                          className="text-[10px] bg-slate-50 border border-slate-200 rounded-lg px-2 py-1 w-full font-medium focus:outline-none focus:ring-1 focus:ring-[#172DC3]/30"
                         >
                           <option value="">+ Assign Staff Member...</option>
                           {staffMembers.map((s) => (
@@ -457,6 +550,29 @@ ${plan.calendar
                   <p className="text-xs text-slate-600 line-clamp-3 bg-white p-2.5 rounded-xl border border-slate-200/80 font-medium">
                     {item.caption}
                   </p>
+
+                  {/* Assigned Team Members in Card View */}
+                  {(item.concernedPeopleIds || []).length > 0 && (
+                    <div className="pt-1.5 space-y-1">
+                      <span className="text-[10px] uppercase font-bold text-slate-400 block tracking-wider">
+                        Assigned Team:
+                      </span>
+                      <div className="flex flex-wrap gap-1">
+                        {(item.concernedPeopleIds || []).map((staffId) => {
+                          const staff = staffMembers.find((s) => s.id === staffId);
+                          if (!staff) return null;
+                          return (
+                            <StaffProfilePopover key={staff.id} staff={staff}>
+                              <span className="inline-flex items-center gap-1 bg-white hover:bg-indigo-50/80 text-[#172DC3] border border-slate-200 hover:border-indigo-200 text-[10px] px-2 py-0.5 rounded-md font-bold transition cursor-pointer shadow-2xs">
+                                <span>{staff.name}</span>
+                                <span className="text-[9px] text-slate-400 font-semibold">({staff.role})</span>
+                              </span>
+                            </StaffProfilePopover>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  )}
                 </div>
 
                 <div className="pt-2 border-t border-slate-200 flex items-center justify-between">

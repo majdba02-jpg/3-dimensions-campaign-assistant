@@ -32,16 +32,19 @@ import {
 } from 'lucide-react';
 
 interface MarketingInsightsProps {
-  records: MarketingDataRecord[];
-  widgets: WidgetPreference[];
+  records?: MarketingDataRecord[];
+  widgets?: WidgetPreference[];
   onSaveWidgets: (newWidgets: WidgetPreference[]) => void;
 }
 
 export const MarketingInsights: React.FC<MarketingInsightsProps> = ({
-  records,
-  widgets,
+  records = [],
+  widgets = [],
   onSaveWidgets,
 }) => {
+  const safeRecords = Array.isArray(records) ? records : [];
+  const safeWidgets = Array.isArray(widgets) ? widgets : [];
+
   // Filters
   const [selectedFormat, setSelectedFormat] = useState<'All' | 'Vidéos' | 'Photos'>('All');
   const [selectedDateOption, setSelectedDateOption] = useState<string>('All Time');
@@ -51,7 +54,7 @@ export const MarketingInsights: React.FC<MarketingInsightsProps> = ({
   // Dynamically derive available date filters from uploaded records
   const availableDateOptions = useMemo(() => {
     const monthsSet = new Set<string>();
-    records.forEach((r) => {
+    safeRecords.forEach((r) => {
       if (r.publishTime) {
         const datePart = r.publishTime.split(' ')[0];
         const parts = datePart.split('/');
@@ -63,11 +66,11 @@ export const MarketingInsights: React.FC<MarketingInsightsProps> = ({
       }
     });
     return ['All Time', ...Array.from(monthsSet).sort()];
-  }, [records]);
+  }, [safeRecords]);
 
   // Filtered dataset calculated deterministically
   const filteredRecords = useMemo(() => {
-    return records.filter((rec) => {
+    return safeRecords.filter((rec) => {
       // Format filter
       if (selectedFormat !== 'All' && rec.publicationType !== selectedFormat) {
         return false;

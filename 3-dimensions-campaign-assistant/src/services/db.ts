@@ -3,7 +3,7 @@
  */
 
 const DB_NAME = '3Dimensions_CampaignAssistant_DB';
-const DB_VERSION = 1;
+const DB_VERSION = 3;
 
 export const STORES = {
   MARKETING_DATA: 'marketing_data',
@@ -18,6 +18,10 @@ export const STORES = {
   WIDGET_PREFERENCES: 'widget_preferences',
   STAFF_MEMBERS: 'staff_members',
   APP_SETTINGS: 'app_settings',
+  CUSTOM_ROLES: 'custom_roles',
+  CUSTOM_CAMPAIGN_TYPES: 'custom_campaign_types',
+  CUSTOM_TARGET_AUDIENCES: 'custom_target_audiences',
+  CUSTOM_LOCATION_GROUPS: 'custom_location_groups',
 } as const;
 
 let dbPromise: Promise<IDBDatabase> | null = null;
@@ -66,6 +70,18 @@ export function getDB(): Promise<IDBDatabase> {
       }
       if (!db.objectStoreNames.contains(STORES.APP_SETTINGS)) {
         db.createObjectStore(STORES.APP_SETTINGS, { keyPath: 'key' });
+      }
+      if (!db.objectStoreNames.contains(STORES.CUSTOM_ROLES)) {
+        db.createObjectStore(STORES.CUSTOM_ROLES, { keyPath: 'id' });
+      }
+      if (!db.objectStoreNames.contains(STORES.CUSTOM_CAMPAIGN_TYPES)) {
+        db.createObjectStore(STORES.CUSTOM_CAMPAIGN_TYPES, { keyPath: 'id' });
+      }
+      if (!db.objectStoreNames.contains(STORES.CUSTOM_TARGET_AUDIENCES)) {
+        db.createObjectStore(STORES.CUSTOM_TARGET_AUDIENCES, { keyPath: 'id' });
+      }
+      if (!db.objectStoreNames.contains(STORES.CUSTOM_LOCATION_GROUPS)) {
+        db.createObjectStore(STORES.CUSTOM_LOCATION_GROUPS, { keyPath: 'id' });
       }
     };
 
@@ -139,5 +155,29 @@ export async function clearStore(storeName: string): Promise<void> {
     const req = store.clear();
     req.onsuccess = () => resolve();
     req.onerror = () => reject(req.error);
+  });
+}
+
+export async function executeMultiStoreTransaction(
+  storeNames: string[],
+  callback: (stores: Record<string, IDBObjectStore>) => void
+): Promise<void> {
+  const db = await getDB();
+  return new Promise((resolve, reject) => {
+    const tx = db.transaction(storeNames, 'readwrite');
+    const storeMap: Record<string, IDBObjectStore> = {};
+    for (const name of storeNames) {
+      storeMap[name] = tx.objectStore(name);
+    }
+    try {
+      callback(storeMap);
+    } catch (err) {
+      tx.abort();
+      reject(err);
+      return;
+    }
+    tx.oncomplete = () => resolve();
+    tx.onerror = () => reject(tx.error);
+    tx.onabort = () => reject(tx.error || new Error('Transaction aborted'));
   });
 }
